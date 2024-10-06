@@ -64,6 +64,48 @@ Clipper2Lib::Paths64 simplifyPaths(const Clipper2Lib::Paths64 &paths, double eps
     return Clipper2Lib::SimplifyPaths(paths, epsilon, isOpenPath);
 }
 
+py::list minkowskiSum(const py::list &pattern, const py::list &path, bool isClosed = true)
+{
+    Clipper2Lib::Path64 pattern_c;
+    Clipper2Lib::Path64 path_c;
+
+    pattern_c.reserve(pattern.size());
+    for (const auto &item : pattern) {
+        if (PyList_Check(item.ptr())) { // 确保item是列表
+            py::list inner_list = item.cast<py::list>();
+            pattern_c.push_back(Clipper2Lib::Point64(inner_list[0].cast<int64_t>(), inner_list[1].cast<int64_t>()));
+        } else {
+            throw std::runtime_error("Nested elements must be lists of int64_t.");
+        }
+    }
+
+    path_c.reserve(pattern.size());
+    for (const auto &item : path) {
+        if (PyList_Check(item.ptr())) { // 确保item是列表
+            py::list inner_list = item.cast<py::list>();
+            path_c.push_back(Clipper2Lib::Point64(inner_list[0].cast<int64_t>(), inner_list[1].cast<int64_t>()));
+        } else {
+            throw std::runtime_error("Nested elements must be lists of int64_t.");
+        }
+    }
+
+    Clipper2Lib::Paths64 solution_c;
+    solution_c = Clipper2Lib::MinkowskiSum(pattern_c, path_c, isClosed);
+    py::list solution;
+    for (const auto &cur_path_c : solution_c) {
+        py::list cur_path;
+        for (const auto &cur_point_c : cur_path_c) {
+            py::list cur_point;
+            cur_point.append((py::int_)cur_point_c.x);
+            cur_point.append((py::int_)cur_point_c.y);
+            cur_path.append(cur_point);
+        }
+        solution.append(cur_path);
+    }
+    return solution;
+}
+
+
 bool orientation(const py::array_t<double> &path, const float scaleFactor = 1000)
 {
 
@@ -426,10 +468,10 @@ PYBIND11_MODULE(pyclipr, m) {
     )pbdoc";
 
 
-	m.attr("clipperVersion")= CLIPPER2_VERSION;
+	m.attr("clipperVersion")= CLIPPER2_VERSION;  // @NOTE expose value from C++
 
 
-    py::class_<Clipper2Lib::PolyPath>(m, "PolyPath")
+    py::class_<Clipper2Lib::PolyPath>(m, "PolyPath")  // PolyPath
         /*.def(py::init<>()) */
         .def_property_readonly("level", &Clipper2Lib::PolyPath::Level)
         .def_property_readonly("parent", &Clipper2Lib::PolyPath::Parent);
@@ -541,6 +583,17 @@ PYBIND11_MODULE(pyclipr, m) {
             :param epsilon: The maximum distance a vertex can be from an imaginary line that passes through its 2 adjacent vertices.
             :param isOpenPath: If `True``, the path is treated as an open path. If `False`, the path is treated as a closed path.
             :return: None
+            )"
+    )
+    .def("minkowskiSum", &pyclipr::minkowskiSum, py::arg("pattern"), py::arg("path"), py::arg("isClosed") = true,
+                        py::return_value_policy::automatic, R"(
+    
+            This function computes the Minkowski sum of two paths.
+
+            :param pattern: A 2D numpy array of shape (m, 2) where n is the number of vertices.
+            :param path: A 2D numpy array of shape (n, 2) where n is the number of vertices.
+            :param isClose: If `True``, the path is treated as a closed path. If `False`, the path is treated as an open path.
+            :return: A list of paths representing the Minkowski sum result.
             )"
     );
 
@@ -761,4 +814,3 @@ PYBIND11_MODULE(pyclipr, m) {
 #endif
 
 }
-
